@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Node.js com cache de dependências
         uses: actions/setup-node@v7
@@ -60,7 +60,7 @@ jobs:
       imagem: ${{ steps.nome.outputs.imagem }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Nome imutável da imagem (sha do commit)
         id: nome
@@ -94,7 +94,7 @@ jobs:
       packages: read
     steps:
       - name: Checkout (scripts de teste)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
@@ -129,7 +129,7 @@ jobs:
       IMAGEM: ${{ needs.build.outputs.imagem }}
     steps:
       - name: Checkout (scripts de teste)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
@@ -160,7 +160,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout com histórico completo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
