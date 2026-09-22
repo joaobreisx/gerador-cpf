@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Gerador de CPF</title>
+  <meta name="description" content="Gere CPFs válidos para testes de software, sem repetição, com histórico.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232D5BE3'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='16' font-weight='700' text-anchor='middle' fill='%23F2B83A'%3E00%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="topo">
+    <div class="marca">
+      <span class="marca-selo" aria-hidden="true">00</span>
+      <span class="marca-nome">Gerador de CPF</span>
+    </div>
+    <button class="botao-icone" id="alternar-tema" type="button" aria-label="Alternar tema claro e escuro">
+      <svg class="icone-sol" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>
+      <svg class="icone-lua" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
+    </button>
+  </header>
+
+  <main class="layout">
+    <!-- Painel fixo: continua visível enquanto o histórico rola -->
+    <section class="painel" aria-labelledby="titulo-gerador">
+      <h1 id="titulo-gerador" class="titulo">CPFs válidos para testar seu sistema</h1>
+      <p class="subtitulo">Cada número passa no cálculo dos dígitos verificadores e nunca se repete no seu histórico. Use só em ambientes de teste.</p>
+
+      <div class="visor" id="visor" data-vazio="true">
+        <div class="visor-numero" id="visor-numero" aria-hidden="true"></div>
+        <p class="visor-legenda">
+          <span class="legenda-base">Base sorteada</span>
+          <span class="legenda-verificador">Dígitos verificadores</span>
+        </p>
+        <p class="sr-only" id="visor-texto" aria-live="polite"></p>
+      </div>
+
+      <div class="controles">
+        <label class="campo campo-regiao">
+          <span class="campo-rotulo">Região fiscal</span>
+          <select id="regiao">
+            <option value="">Qualquer região</option>
+          </select>
+        </label>
+        <label class="interruptor">
+          <input type="checkbox" id="pontuacao" checked>
+          <span class="interruptor-trilho" aria-hidden="true"><span class="interruptor-bola"></span></span>
+          <span>Copiar com pontuação</span>
+        </label>
+      </div>
+
+      <div class="acoes">
+        <button class="botao botao-primario" id="gerar" type="button">
+          <span class="botao-texto" id="gerar-texto">Gerar CPF</span>
+          <kbd class="atalho" aria-hidden="true">G</kbd>
+        </button>
+        <button class="botao botao-secundario" id="copiar" type="button" disabled>
+          <svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8"/></svg>
+          <span id="copiar-texto">Copiar</span>
+        </button>
+      </div>
+
+      <div class="sessao" id="sessao">
+        <div class="sessao-barra" id="sessao-barra" aria-hidden="true"></div>
+        <p class="sessao-texto" id="sessao-texto"></p>
+        <button class="link" id="recarregar" type="button" hidden>Recarregar a página</button>
+      </div>
+
+      <details class="manual" id="manual">
+        <summary>
+          <span>Adicionar CPF manualmente</span>
+          <svg class="icone seta" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </summary>
+        <form class="manual-form" id="form-manual" novalidate>
+          <label class="campo">
+            <span class="campo-rotulo">CPF</span>
+            <input id="manual-cpf" inputmode="numeric" autocomplete="off" placeholder="000.000.000-00" maxlength="14" required>
+            <span class="campo-dica" id="manual-dica" aria-live="polite">Digite os 11 números. CPFs inválidos também podem ser anotados.</span>
+          </label>
+          <label class="campo">
+            <span class="campo-rotulo">Anotação <span class="opcional">(opcional)</span></span>
+            <input id="manual-nota" maxlength="120" autocomplete="off" placeholder="Ex.: usuário do teste de login">
+          </label>
+          <button class="botao botao-secundario" type="submit">Salvar no histórico</button>
+        </form>
+      </details>
+    </section>
+
+    <section class="historico" aria-labelledby="titulo-historico">
+      <div class="historico-topo">
+        <div class="historico-titulo">
+          <h2 id="titulo-historico">Histórico</h2>
+          <span class="contador" id="contador">0</span>
+        </div>
+        <div class="historico-ferramentas">
+          <label class="busca">
+            <svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.3-4.3"/></svg>
+            <input id="busca" type="search" placeholder="Buscar CPF ou nota" aria-label="Buscar no histórico">
+          </label>
+          <button class="botao botao-fantasma" id="exportar" type="button">Exportar .txt</button>
+          <button class="botao botao-fantasma botao-perigo" id="limpar" type="button">Limpar histórico</button>
+        </div>
+      </div>
+
+      <ol class="lista" id="lista" aria-live="polite"></ol>
+
+      <div class="vazio" id="vazio">
+        <p class="vazio-titulo">Nenhum CPF por aqui ainda</p>
+        <p>Gere o primeiro ou anote um à mão. Tudo fica salvo neste navegador.</p>
+      </div>
+      <p class="vazio" id="sem-resultado" hidden>Nenhum CPF corresponde à busca.</p>
+    </section>
+  </main>
+
+  <!-- No celular: barra flutuante que mantém o gerador sempre à mão -->
+  <div class="mini" id="mini" aria-hidden="true">
+    <span class="mini-cpf" id="mini-cpf">Nenhum CPF gerado</span>
+    <button class="botao-icone" id="mini-copiar" type="button" aria-label="Copiar o CPF atual" tabindex="-1" disabled>
+      <svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8"/></svg>
+    </button>
+    <button class="botao botao-primario mini-gerar" id="mini-gerar" type="button" tabindex="-1">Gerar</button>
+  </div>
+
+  <div class="avisos" id="avisos" role="status" aria-live="polite"></div>
+
+  <template id="modelo-item">
+    <li class="item">
+      <div class="item-principal">
+        <span class="item-cpf"></span>
+        <span class="item-nota"></span>
+      </div>
+      <div class="item-meta">
+        <span class="etiqueta etiqueta-origem"></span>
+        <span class="etiqueta etiqueta-validade"></span>
+        <span class="item-regiao"></span>
+        <time class="item-hora"></time>
+      </div>
+      <div class="item-acoes">
+        <button class="botao-icone item-copiar" type="button">
+          <svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8"/></svg>
+        </button>
+        <button class="botao-icone item-remover" type="button">
+          <svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M6.5 7l.8 11.2A2 2 0 0 0 9.3 20h5.4a2 2 0 0 0 2-1.8L17.5 7M9.5 7V5.5A1.5 1.5 0 0 1 11 4h2a1.5 1.5 0 0 1 1.5 1.5V7"/></svg>
+        </button>
+      </div>
+    </li>
+  </template>
+</body>
+</html>

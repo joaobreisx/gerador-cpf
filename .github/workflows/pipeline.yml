@@ -1,0 +1,198 @@
+name: Pipeline CI/CD
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pipeline-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # ---------------------------------------------------------------- CI
+  ci:
+    name: CI - lint, testes e segurança
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js com cache de dependências
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Restaurar dependências
+        run: npm ci
+
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      - name: Testes unitários e de integração com cobertura mínima de 80%
+        run: npm run test:coverage
+
+      - name: SCA - vulnerabilidades em dependências
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Build da imagem (validação no PR)
+        if: github.event_name == 'pull_request'
+        run: docker build --build-arg GIT_SHA=${{ github.sha }} -t gerador-cpf:pr .
+
+  # ---------------------------------------------------------------- Artefato
+  build:
+    name: Build e publicação da imagem
+    needs: ci
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      imagem: ${{ steps.nome.outputs.imagem }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Nome imutável da imagem (sha do commit)
+        id: nome
+        run: echo "imagem=ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login no GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build e push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.nome.outputs.imagem }}
+          build-args: GIT_SHA=${{ github.sha }}
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+  # ---------------------------------------------------------------- CD: homologação
+  staging:
+    name: CD - Homologação (ambiente efêmero)
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout (scripts de teste)
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Login no GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Subir a MESMA imagem que irá para produção
+        run: docker run -d --name homologacao -p 3000:3000 ${{ needs.build.outputs.imagem }}
+
+      - name: Testes de aceitação e fumaça
+        run: node scripts/smoke-test.js http://localhost:3000 ${{ github.sha }}
+
+      - name: Logs do container
+        if: always()
+        run: docker logs homologacao || true
+
+  # ---------------------------------------------------------------- CD: produção
+  production:
+    name: CD - Produção
+    needs: [build, staging]
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+      PROD_URL: ${{ vars.PROD_URL }}
+      IMAGEM: ${{ needs.build.outputs.imagem }}
+    steps:
+      - name: Checkout (scripts de teste)
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Aviso - produção não configurada
+        if: env.RENDER_DEPLOY_HOOK == ''
+        run: echo "::warning::Secret RENDER_DEPLOY_HOOK não configurado. Deploy em produção ignorado."
+
+      - name: Deploy no Render (promove a imagem já testada, sem recompilar)
+        if: env.RENDER_DEPLOY_HOOK != ''
+        run: |
+          IMG_CODIFICADA=$(node -e 'console.log(encodeURIComponent(process.argv[1]))' "$IMAGEM")
+          curl -fsS -X POST "${RENDER_DEPLOY_HOOK}&imgURL=${IMG_CODIFICADA}" > /dev/null
+          echo "Deploy solicitado: $IMAGEM"
+
+      - name: Smoke tests em produção (espera o commit novo entrar no ar)
+        if: env.RENDER_DEPLOY_HOOK != '' && env.PROD_URL != ''
+        run: node scripts/smoke-test.js "$PROD_URL" "${{ github.sha }}" --tentativas 60
+
+  # ---------------------------------------------------------------- Baseline
+  release:
+    name: Baseline - tag SemVer e release notes
+    needs: [build, production]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout com histórico completo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calcular próxima versão pelos Conventional Commits e criar a tag
+        id: versao
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: patch
+          release_branches: main
+
+      - name: Publicar release com as notas geradas
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.versao.outputs.new_tag }}
+          NOTAS: ${{ steps.versao.outputs.changelog }}
+        run: gh release create "$TAG" --title "$TAG" --notes "$NOTAS"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login no GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Etiquetar a imagem aprovada com a versão (sem rebuild)
+        env:
+          IMAGEM: ${{ needs.build.outputs.imagem }}
+          VERSAO: ${{ steps.versao.outputs.new_version }}
+        run: |
+          BASE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          docker buildx imagetools create -t "$BASE:$VERSAO" -t "$BASE:latest" "$IMAGEM"
+          echo "Baseline v$VERSAO -> $IMAGEM"

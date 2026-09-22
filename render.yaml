@@ -1,0 +1,16 @@
+# Infraestrutura como Código (Render Blueprint).
+# Descreve o serviço de produção. O Render roda a imagem publicada no GHCR;
+# quem decide QUAL imagem sobe é o pipeline (deploy hook com imgURL).
+services:
+  - type: web
+    name: gerador-cpf
+    runtime: image
+    image:
+      url: ghcr.io/joaobreisx/gerador-cpf:latest
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      - key: NODE_ENV
+        value: production
