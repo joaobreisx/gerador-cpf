@@ -47,6 +47,7 @@ const el = {
   contador: $('contador'),
   busca: $('busca'),
   exportar: $('exportar'),
+  exportarCsv: $('exportar-csv'),
   limpar: $('limpar'),
   avisos: $('avisos'),
   modeloItem: $('modelo-item'),
@@ -284,6 +285,7 @@ function renderizarLista(idNovo) {
   el.vazio.hidden = itens.length > 0;
   el.semResultado.hidden = !(itens.length > 0 && visiveis.length === 0);
   el.exportar.disabled = itens.length === 0;
+  el.exportarCsv.disabled = itens.length === 0;
   el.limpar.disabled = itens.length === 0;
 
   const total = String(itens.length);
@@ -431,6 +433,20 @@ el.exportar.addEventListener('click', () => {
   const link = document.createElement('a');
   link.href = url;
   link.download = `cpfs-${new Date().toISOString().slice(0, 10)}.txt`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
+el.exportarCsv.addEventListener('click', () => {
+  // O BOM (\uFEFF) faz o Excel abrir os acentos corretamente.
+  const csv = historico.exportarCsv({ formatado: el.pontuacao.checked });
+  const blob = new Blob([`\uFEFF${csv}\r\n`], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `cpfs-${new Date().toISOString().slice(0, 10)}.csv`;
   document.body.append(link);
   link.click();
   link.remove();
