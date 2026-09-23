@@ -85,6 +85,23 @@ describe('criarHistorico', () => {
     assert.equal(historico.exportarTexto({ formatado: false }), '52998224725\tteste\n11144477735');
   });
 
+  it('exporta CSV com cabeçalho e separador ponto e vírgula', () => {
+    historico.adicionar({ cpf: '11144477735', origem: 'manual', nota: 'cliente' });
+    const [cabecalho, linha] = historico.exportarCsv().split('\r\n');
+    assert.equal(cabecalho, 'cpf;origem;valido;regiao;nota;criado_em');
+    assert.equal(linha, '111.444.777-35;manual;sim;ES e RJ;cliente;2023-11-14T22:13:20.000Z');
+    assert.match(historico.exportarCsv({ formatado: false }), /\r\n11144477735;/);
+  });
+
+  it('protege campos especiais no CSV', () => {
+    historico.adicionar({ cpf: '12345678900', nota: 'teste; "aspas"' });
+    historico.adicionar({ cpf: '52998224725', nota: '=1+1' });
+    const csv = historico.exportarCsv();
+    assert.ok(csv.includes(';nao;'), 'CPF inválido marcado como nao');
+    assert.ok(csv.includes('"teste; ""aspas"""'), 'aspas e ponto e vírgula escapados');
+    assert.ok(csv.includes(";'=1+1;"), 'fórmula neutralizada');
+  });
+
   it('ignora dados corrompidos no storage', () => {
     const corrompido = criarHistorico(storageFalso({ [CHAVE_PADRAO]: '{isso não é json' }));
     assert.equal(corrompido.tamanho(), 0);

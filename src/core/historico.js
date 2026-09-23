@@ -29,6 +29,16 @@ function gravarSeguro(storage, chave, itens) {
   }
 }
 
+/**
+ * Prepara um campo para CSV: aspas quando há ; " ou quebra de linha (RFC 4180)
+ * e um apóstrofo antes de = + - @ para o Excel não interpretar como fórmula.
+ */
+function campoCsv(valor) {
+  let texto = String(valor);
+  if (/^[=+\-@]/.test(texto)) texto = `'${texto}`;
+  return /[;"\r\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
+}
+
 let contadorId = 0;
 function novoId(agora) {
   contadorId += 1;
@@ -97,6 +107,20 @@ export function criarHistorico(storage, { chave = CHAVE_PADRAO, relogio = () => 
           return i.nota ? `${cpf}\t${i.nota}` : cpf;
         })
         .join('\n');
+    },
+
+    /** CSV com cabeçalho, separado por ponto e vírgula (padrão do Excel em português). */
+    exportarCsv({ formatado = true } = {}) {
+      const cabecalho = ['cpf', 'origem', 'valido', 'regiao', 'nota', 'criado_em'];
+      const linhas = itens.map((i) => [
+        formatado ? formatarCpf(i.cpf) : i.cpf,
+        i.origem,
+        i.valido ? 'sim' : 'nao',
+        i.regiao,
+        i.nota,
+        new Date(i.criadoEm).toISOString(),
+      ]);
+      return [cabecalho, ...linhas].map((campos) => campos.map(campoCsv).join(';')).join('\r\n');
     },
   };
 }
