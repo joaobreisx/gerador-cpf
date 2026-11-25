@@ -2,6 +2,9 @@ import { formatarCpf, limpar, regiaoDoCpf, validarCpf } from './cpf.js';
 
 export const CHAVE_PADRAO = 'gerador-cpf:historico';
 
+/** Origens aceitas para um item do histórico. */
+export const ORIGENS = Object.freeze(['gerado', 'manual']);
+
 export class ErroHistorico extends Error {
   constructor(codigo, mensagem) {
     super(mensagem);
@@ -65,6 +68,9 @@ export function criarHistorico(storage, { chave = CHAVE_PADRAO, relogio = () => 
      * @returns o item salvo (o mais recente fica no topo)
      */
     adicionar({ cpf, origem = 'gerado', nota = '' }) {
+      if (!ORIGENS.includes(origem)) {
+        throw new ErroHistorico('origem', `Origem inválida: use ${ORIGENS.join(' ou ')}.`);
+      }
       const digitos = limpar(cpf);
       if (digitos.length !== 11) {
         throw new ErroHistorico('formato', 'O CPF precisa ter 11 dígitos.');
