@@ -56,6 +56,14 @@ describe('criarHistorico', () => {
     );
   });
 
+  it('recusa origem diferente de gerado ou manual, sem gravar nada', () => {
+    assert.throws(
+      () => historico.adicionar({ cpf: '52998224725', origem: 'importado' }),
+      (erro) => erro instanceof ErroHistorico && erro.codigo === 'origem',
+    );
+    assert.equal(historico.tamanho(), 0);
+  });
+
   it('aceita anotar um CPF inválido, marcando como inválido', () => {
     const item = historico.adicionar({ cpf: '12345678900', origem: 'manual' });
     assert.equal(item.valido, false);
